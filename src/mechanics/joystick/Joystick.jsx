@@ -1,60 +1,50 @@
 import React, { useState, useRef, useEffect } from 'react';
 import styles from './Joystick.module.scss';
+import classNames from 'classnames';
 
 export const VirtualJoystick = ({ onMove, onStop, size = 150, stickSize = 60 }) => {
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const [isActive, setIsActive] = useState(false);
     const joystickRef = useRef(null);
-    const stickRef = useRef(null);
     const touchIdRef = useRef(null);
 
+    const getPosition = (clientX, clientY) => {
+        const rect = joystickRef.current.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        let x = clientX - centerX;
+        let y = clientY - centerY;
+
+        const distance = Math.sqrt(x * x + y * y);
+        const maxDistance = size / 2;
+
+        if (distance > maxDistance) {
+            x = x * maxDistance / distance;
+            y = y * maxDistance / distance;
+        }
+
+        return { x, y };
+    };
+
     const handleStart = (clientX, clientY) => {
-        if (!joystickRef.current || !stickRef.current) return;
-
-        const joystickRect = joystickRef.current.getBoundingClientRect();
-        const centerX = joystickRect.left + joystickRect.width / 2;
-        const centerY = joystickRect.top + joystickRect.height / 2;
-
-        const x = clientX - centerX;
-        const y = clientY - centerY;
-
-        const distance = Math.min(Math.sqrt(x * x + y * y), size / 2);
-        const angle = Math.atan2(y, x);
-
-        const boundedX = Math.cos(angle) * distance;
-        const boundedY = Math.sin(angle) * distance;
-
-        setPosition({ x: boundedX, y: boundedY });
+        const { x, y } = getPosition(clientX, clientY);
+        setPosition({ x, y });
         setIsActive(true);
-
-        // Нормализованные значения направления (-1 до 1)
-        const normalizedX = boundedX / (size / 2);
-        const normalizedY = boundedY / (size / 2);
-        onMove({ x: normalizedX, y: normalizedY });
+        onMove({
+            x: x / (size / 2),
+            y: y / (size / 2)
+        });
     };
 
     const handleMove = (clientX, clientY) => {
-        if (!isActive || !joystickRef.current) return;
-
-        const joystickRect = joystickRef.current.getBoundingClientRect();
-        const centerX = joystickRect.left + joystickRect.width / 2;
-        const centerY = joystickRect.top + joystickRect.height / 2;
-
-        const x = clientX - centerX;
-        const y = clientY - centerY;
-
-        const distance = Math.min(Math.sqrt(x * x + y * y), size / 2);
-        const angle = Math.atan2(y, x);
-
-        const boundedX = Math.cos(angle) * distance;
-        const boundedY = Math.sin(angle) * distance;
-
-        setPosition({ x: boundedX, y: boundedY });
-
-        // Нормализованные значения направления (-1 до 1)
-        const normalizedX = boundedX / (size / 2);
-        const normalizedY = boundedY / (size / 2);
-        onMove({ x: normalizedX, y: normalizedY });
+        if (!isActive) return;
+        const { x, y } = getPosition(clientX, clientY);
+        setPosition({ x, y });
+        onMove({
+            x: x / (size / 2),
+            y: y / (size / 2)
+        });
     };
 
     const handleEnd = () => {
@@ -64,12 +54,14 @@ export const VirtualJoystick = ({ onMove, onStop, size = 150, stickSize = 60 }) 
         onStop();
     };
 
-    // Обработчики для мыши
+    // Обработчики событий
     const onMouseDown = (e) => {
+        e.preventDefault();
         handleStart(e.clientX, e.clientY);
     };
 
     const onMouseMove = (e) => {
+        e.preventDefault();
         handleMove(e.clientX, e.clientY);
     };
 
@@ -77,7 +69,6 @@ export const VirtualJoystick = ({ onMove, onStop, size = 150, stickSize = 60 }) 
         handleEnd();
     };
 
-    // Обработчики для тач-устройств
     const onTouchStart = (e) => {
         if (touchIdRef.current !== null) return;
         const touch = e.touches[0];
@@ -87,24 +78,18 @@ export const VirtualJoystick = ({ onMove, onStop, size = 150, stickSize = 60 }) 
 
     const onTouchMove = (e) => {
         if (touchIdRef.current === null) return;
-        const touch = Array.from(e.touches).find(
-            (t) => t.identifier === touchIdRef.current
-        );
-        if (touch) {
-            handleMove(touch.clientX, touch.clientY);
-        }
+        const touch = Array.from(e.touches).find(t => t.identifier === touchIdRef.current);
+        if (touch) handleMove(touch.clientX, touch.clientY);
     };
 
     const onTouchEnd = () => {
         handleEnd();
     };
 
-    // eslint-disable-next-line
     useEffect(() => {
-        // Добавляем глобальные обработчики для мыши и тача
         window.addEventListener('mousemove', onMouseMove);
         window.addEventListener('mouseup', onMouseUp);
-        window.addEventListener('touchmove', onTouchMove);
+        window.addEventListener('touchmove', onTouchMove, { passive: false });
         window.addEventListener('touchend', onTouchEnd);
 
         return () => {
@@ -118,20 +103,16 @@ export const VirtualJoystick = ({ onMove, onStop, size = 150, stickSize = 60 }) 
     return (
         <div
             ref={joystickRef}
-            className={styles['joystick-container']}
-            style={{
-                width: `${size}px`,
-                height: `${size}px`,
-            }}
+            className={styles["joystick-container"]}
+            style={{ width: size, height: size }}
             onMouseDown={onMouseDown}
             onTouchStart={onTouchStart}>
             <div
-                ref={stickRef}
-                className={styles[`joystick-stick ${isActive ? 'active' : ''}`]}
+                className={classNames(styles['joystick-stick'], isActive ? styles.active : '')}
                 style={{
-                    width: `${stickSize}px`,
-                    height: `${stickSize}px`,
-                    transform: `translate(${position.x}px, ${position.y}px)`,
+                    width: stickSize,
+                    height: stickSize,
+                    transform: `translate(${position.x}px, ${position.y}px)`
                 }}
             />
         </div>
