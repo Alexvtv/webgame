@@ -1,0 +1,51 @@
+.game-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.game-field {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-color: #333;
+    background-image:
+        linear-gradient(#444 1px, transparent 1px),
+        linear-gradient(90deg, #444 1px, transparent 1px);
+    background-size: 50px 50px;
+}
+
+.character {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    transform-origin: center;
+    transition: left 0.1s linear, top 0.1s linear;
+    z-index: 10;
+}
+
+.character-inner {
+    width: 100%;
+    height: 100%;
+    background-color: #f00;
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgba(255, 0, 0, 0.7);
+}
+
+/* Можно добавить анимацию движения */
+@keyframes move {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-5px);
+    }
+}
+
+.character.move {
+    animation: move 0.5s infinite ease-in-out;
+}
