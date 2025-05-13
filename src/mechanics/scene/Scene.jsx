@@ -1,62 +1,194 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { VirtualJoystick } from '../joystick/Joystick.jsx';
+import { VirtualJoystick } from '../joystick/Joystick';
 import styles from './Scene.module.scss';
 
-export const GameScene = () => {
-    const [characterPosition, setCharacterPosition] = useState({ x: 50, y: 50 });
-    const [characterSpeed] = useState(1);
-    const [movement, setMovement] = useState({ x: 0, y: 0 });
-    const movementRef = useRef(movement); // Реф для актуального состояния движения
+export const GameScene = ({
+    displayWidth = 100,
+    displayHeight = 100,
+    mapWidth = 100,
+    mapHeight = 100,
+    objects = []
+}) => {
+    const [characterPosition, setCharacterPosition] = useState({
+        x: mapWidth / 2,
+        y: mapHeight / 2
+    });
 
-    // Синхронизация состояния movement с рефом
+    const [characterSpeed] = useState(0.2);
+    const [movement, setMovement] = useState({ x: 0, y: 0 });
+    const movementRef = useRef(movement);
+    const prevPositionRef = useRef({ x: mapWidth / 2, y: mapHeight / 2 });
+
+    // Улучшенная проверка коллизий
+    const checkCollision = (x, y) => {
+        const charWidth = 2;
+        const charHeight = 2;
+
+        const charLeft = x - charWidth / 2;
+        const charRight = x + charWidth / 2;
+        const charTop = y - charHeight / 2;
+        const charBottom = y + charHeight / 2;
+
+        for (const obj of objects) {
+            const objLeft = obj.x - (obj.width || 5) / 2;
+            const objRight = obj.x + (obj.width || 5) / 2;
+            const objTop = obj.y - (obj.height || 5) / 2;
+            const objBottom = obj.y + (obj.height || 5) / 2;
+
+            if (charRight > objLeft &&
+                charLeft < objRight &&
+                charBottom > objTop &&
+                charTop < objBottom) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Новая система движения с учетом коллизий
+    const getSafePosition = (newX, newY) => {
+        const prevPos = prevPositionRef.current;
+        let safeX = newX;
+        let safeY = newY;
+
+        // Проверяем движение по X
+        if (newX !== prevPos.x) {
+            if (checkCollision(newX, prevPos.y)) {
+                safeX = prevPos.x;
+            } else {
+                // Пробуем небольшое смещение для "скольжения"
+                const tryY = prevPos.y + (newY - prevPos.y) * 0.5;
+                if (!checkCollision(newX, tryY)) {
+                    safeY = tryY;
+                }
+            }
+        }
+
+        // Проверяем движение по Y
+        if (newY !== prevPos.y) {
+            if (checkCollision(safeX, newY)) {
+                safeY = prevPos.y;
+            } else {
+                // Пробуем небольшое смещение для "скольжения"
+                const tryX = prevPos.x + (newX - prevPos.x) * 0.5;
+                if (!checkCollision(tryX, newY)) {
+                    safeX = tryX;
+                }
+            }
+        }
+
+        // Проверяем угловое движение
+        if (newX !== prevPos.x && newY !== prevPos.y && checkCollision(safeX, safeY)) {
+            if (!checkCollision(newX, prevPos.y)) {
+                return { x: newX, y: prevPos.y };
+            }
+            if (!checkCollision(prevPos.x, newY)) {
+                return { x: prevPos.x, y: newY };
+            }
+            return prevPos;
+        }
+
+        // Границы карты
+        safeX = Math.max(1, Math.min(mapWidth - 1, safeX));
+        safeY = Math.max(1, Math.min(mapHeight - 1, safeY));
+
+        return { x: safeX, y: safeY };
+    };
+
+    const handleJoystickMove = (direction) => {
+        const { x, y } = direction;
+        const length = Math.sqrt(x * x + y * y);
+        setMovement({
+            x: length > 0 ? x / length : 0,
+            y: length > 0 ? y / length : 0
+        });
+    };
+
+    useEffect(() => {
+        let animationFrameId;
+        const updatePosition = () => {
+            const { x, y } = movementRef.current;
+            if (x !== 0 || y !== 0) {
+                setCharacterPosition(prev => {
+                    const newX = prev.x + x * characterSpeed;
+                    const newY = prev.y + y * characterSpeed;
+                    const safePos = getSafePosition(newX, newY);
+                    prevPositionRef.current = safePos;
+                    return safePos;
+                });
+            }
+            animationFrameId = requestAnimationFrame(updatePosition);
+        };
+        animationFrameId = requestAnimationFrame(updatePosition);
+        return () => cancelAnimationFrame(animationFrameId);
+    }, [characterSpeed, mapWidth, mapHeight]);
+
     useEffect(() => {
         movementRef.current = movement;
     }, [movement]);
 
-    const handleJoystickMove = (direction) => {
-        setMovement({
-            x: direction.x,
-            y: direction.y
-        });
-    };
-
-    const handleJoystickStop = () => {
-        setMovement({ x: 0, y: 0 });
-    };
-
-    useEffect(() => {
-        const gameLoop = setInterval(() => {
-            // Используем movementRef.current вместо movement
-            const currentMovement = movementRef.current;
-            if (currentMovement.x !== 0 || currentMovement.y !== 0) {
-                setCharacterPosition(prev => ({
-                    x: Math.max(0, Math.min(100, prev.x + currentMovement.x * characterSpeed)),
-                    y: Math.max(0, Math.min(100, prev.y + currentMovement.y * characterSpeed))
-                }));
-            }
-        }, 70);
-
-        return () => clearInterval(gameLoop);
-    }, [characterSpeed]); // Зависимость только от characterSpeed
+    const scale = Math.min(
+        displayWidth / mapWidth,
+        displayHeight / mapHeight
+    );
 
     return (
         <div className={styles["game-container"]}>
-            <div className={styles["game-field"]}>
-                <div
-                    className={styles["character"]}
-                    style={{
-                        left: `${characterPosition.x}%`,
-                        top: `${characterPosition.y}%`,
-                        transform: `rotate(${movement.x !== 0 || movement.y !== 0
-                            ? Math.atan2(movement.y, movement.x) * (180 / Math.PI) + 90
-                            : 0}deg)`
-                    }}>
-                    <div className={styles["character-inner"]}></div>
+            <div
+                className={styles["game-field"]}
+                style={{
+                    width: `${displayWidth}%`,
+                    height: `${displayHeight}%`,
+                    position: 'relative',
+                    overflow: 'hidden'
+                }}
+            >
+                <div style={{
+                    position: 'absolute',
+                    width: `${mapWidth}%`,
+                    height: `${mapHeight}%`,
+                    transform: `scale(${scale})`,
+                    transformOrigin: 'top left'
+                }}>
+                    {objects.map(obj => (
+                        <div
+                            key={obj.id}
+                            className={styles[`map-object-${obj.type}`]}
+                            style={{
+                                position: 'absolute',
+                                left: `${obj.x}%`,
+                                top: `${obj.y}%`,
+                                width: `${obj.width || 5}%`,
+                                height: `${obj.height || 5}%`,
+                                transform: 'translate(-50%, -50%)'
+                            }}
+                        />
+                    ))}
+
+                    <div
+                        className={styles["character"]}
+                        style={{
+                            position: 'absolute',
+                            left: `${characterPosition.x}%`,
+                            top: `${characterPosition.y}%`,
+                            width: '2%',
+                            height: '2%',
+                            transform: `
+                                translate(-50%, -50%)
+                                rotate(${movement.x !== 0 || movement.y !== 0
+                                    ? Math.atan2(movement.y, movement.x) * (180 / Math.PI) + 90
+                                    : 0}deg)
+                            `
+                        }}
+                    >
+                        <div className={styles["character-inner"]}></div>
+                    </div>
                 </div>
             </div>
+
             <VirtualJoystick
                 onMove={handleJoystickMove}
-                onStop={handleJoystickStop}
+                onStop={() => setMovement({ x: 0, y: 0 })}
             />
         </div>
     );

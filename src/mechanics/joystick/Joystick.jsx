@@ -3,55 +3,96 @@ import styles from './Joystick.module.scss';
 import classNames from 'classnames';
 
 export const VirtualJoystick = ({ onMove, onStop, size = 150, stickSize = 60 }) => {
-    const [position, setPosition] = useState({ x: 0, y: 0 });
-    const [isActive, setIsActive] = useState(false);
     const joystickRef = useRef(null);
+    const stickRef = useRef(null);
     const touchIdRef = useRef(null);
+    const animationFrameRef = useRef(null);
+    const isActiveRef = useRef(false);
+    const positionRef = useRef({ x: 0, y: 0 });
 
-    const getPosition = (clientX, clientY) => {
-        const rect = joystickRef.current.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-
-        let x = clientX - centerX;
-        let y = clientY - centerY;
-
-        const distance = Math.sqrt(x * x + y * y);
+    const updatePosition = (x, y) => {
         const maxDistance = size / 2;
-
+        const distance = Math.sqrt(x * x + y * y);
+        
+        // Нормализация позиции
         if (distance > maxDistance) {
             x = x * maxDistance / distance;
             y = y * maxDistance / distance;
         }
 
-        return { x, y };
+        positionRef.current = { x, y };
+        
+        // Плавное перемещение стика
+        if (stickRef.current) {
+            stickRef.current.style.transform = `translate(${x}px, ${y}px)`;
+        }
+
+        // Передаем нормализованные значения
+        if (onMove) {
+            onMove({
+                x: x / maxDistance,
+                y: y / maxDistance
+            });
+        }
     };
 
     const handleStart = (clientX, clientY) => {
-        const { x, y } = getPosition(clientX, clientY);
-        setPosition({ x, y });
-        setIsActive(true);
-        onMove({
-            x: x / (size / 2),
-            y: y / (size / 2)
-        });
+        const rect = joystickRef.current.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        const x = clientX - centerX;
+        const y = clientY - centerY;
+        
+        isActiveRef.current = true;
+        updatePosition(x, y);
     };
 
     const handleMove = (clientX, clientY) => {
-        if (!isActive) return;
-        const { x, y } = getPosition(clientX, clientY);
-        setPosition({ x, y });
-        onMove({
-            x: x / (size / 2),
-            y: y / (size / 2)
-        });
+        if (!isActiveRef.current) return;
+        
+        const rect = joystickRef.current.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        const x = clientX - centerX;
+        const y = clientY - centerY;
+        
+        updatePosition(x, y);
     };
 
     const handleEnd = () => {
-        setPosition({ x: 0, y: 0 });
-        setIsActive(false);
-        touchIdRef.current = null;
-        onStop();
+        isActiveRef.current = false;
+        positionRef.current = { x: 0, y: 0 };
+        
+        // Плавный возврат стика в центр
+        const animateReturn = () => {
+            const { x, y } = positionRef.current;
+            const speed = 0.2;
+            
+            if (Math.abs(x) < 0.1 && Math.abs(y) < 0.1) {
+                positionRef.current = { x: 0, y: 0 };
+                if (stickRef.current) {
+                    stickRef.current.style.transform = 'translate(0, 0)';
+                }
+                if (onStop) onStop();
+                return;
+            }
+            
+            positionRef.current = {
+                x: x * (1 - speed),
+                y: y * (1 - speed)
+            };
+            
+            if (stickRef.current) {
+                stickRef.current.style.transform = `translate(${positionRef.current.x}px, ${positionRef.current.y}px)`;
+            }
+            
+            animationFrameRef.current = requestAnimationFrame(animateReturn);
+        };
+        
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = requestAnimationFrame(animateReturn);
     };
 
     // Обработчики событий
@@ -60,45 +101,56 @@ export const VirtualJoystick = ({ onMove, onStop, size = 150, stickSize = 60 }) 
         handleStart(e.clientX, e.clientY);
     };
 
-    const onMouseMove = (e) => {
-        e.preventDefault();
-        handleMove(e.clientX, e.clientY);
-    };
-
-    const onMouseUp = () => {
-        handleEnd();
-    };
-
     const onTouchStart = (e) => {
         if (touchIdRef.current !== null) return;
+        e.preventDefault();
         const touch = e.touches[0];
         touchIdRef.current = touch.identifier;
         handleStart(touch.clientX, touch.clientY);
     };
 
-    const onTouchMove = (e) => {
-        if (touchIdRef.current === null) return;
-        const touch = Array.from(e.touches).find(t => t.identifier === touchIdRef.current);
-        if (touch) handleMove(touch.clientX, touch.clientY);
-    };
-
-    const onTouchEnd = () => {
-        handleEnd();
-    };
-
     useEffect(() => {
-        window.addEventListener('mousemove', onMouseMove);
-        window.addEventListener('mouseup', onMouseUp);
-        window.addEventListener('touchmove', onTouchMove, { passive: false });
-        window.addEventListener('touchend', onTouchEnd);
+        const handleMouseMove = (e) => {
+            if (!isActiveRef.current) return;
+            e.preventDefault();
+            handleMove(e.clientX, e.clientY);
+        };
+
+        const handleMouseUp = () => {
+            if (!isActiveRef.current) return;
+            handleEnd();
+        };
+
+        const handleTouchMove = (e) => {
+            if (!isActiveRef.current || touchIdRef.current === null) return;
+            e.preventDefault();
+            const touch = Array.from(e.changedTouches).find(t => t.identifier === touchIdRef.current);
+            if (touch) handleMove(touch.clientX, touch.clientY);
+        };
+
+        const handleTouchEnd = (e) => {
+            if (touchIdRef.current === null) return;
+            const touch = Array.from(e.changedTouches).find(t => t.identifier === touchIdRef.current);
+            if (touch) {
+                e.preventDefault();
+                handleEnd();
+                touchIdRef.current = null;
+            }
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('touchmove', handleTouchMove, { passive: false });
+        window.addEventListener('touchend', handleTouchEnd);
 
         return () => {
-            window.removeEventListener('mousemove', onMouseMove);
-            window.removeEventListener('mouseup', onMouseUp);
-            window.removeEventListener('touchmove', onTouchMove);
-            window.removeEventListener('touchend', onTouchEnd);
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('touchmove', handleTouchMove);
+            window.removeEventListener('touchend', handleTouchEnd);
+            cancelAnimationFrame(animationFrameRef.current);
         };
-    }, [isActive]);
+    }, []);
 
     return (
         <div
@@ -106,13 +158,18 @@ export const VirtualJoystick = ({ onMove, onStop, size = 150, stickSize = 60 }) 
             className={styles["joystick-container"]}
             style={{ width: size, height: size }}
             onMouseDown={onMouseDown}
-            onTouchStart={onTouchStart}>
+            onTouchStart={onTouchStart}
+        >
             <div
-                className={classNames(styles['joystick-stick'], isActive ? styles.active : '')}
+                ref={stickRef}
+                className={classNames(
+                    styles['joystick-stick'],
+                    isActiveRef.current ? styles.active : ''
+                )}
                 style={{
                     width: stickSize,
                     height: stickSize,
-                    transform: `translate(${position.x}px, ${position.y}px)`
+                    transition: isActiveRef.current ? 'none' : 'transform 0.2s ease-out'
                 }}
             />
         </div>
