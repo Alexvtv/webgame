@@ -14,12 +14,11 @@ export const GameScene = ({
         y: mapHeight / 2
     });
 
-    const [characterSpeed] = useState(0.2);
-    const [movement, setMovement] = useState({ x: 0, y: 0 });
-    const movementRef = useRef(movement);
+    const CHARACTER_SPEED = 0.2; // Фиксированная скорость
+    const movementRef = useRef({ x: 0, y: 0 });
+    const lastUpdateRef = useRef(performance.now());
     const prevPositionRef = useRef({ x: mapWidth / 2, y: mapHeight / 2 });
 
-    // Улучшенная проверка коллизий
     const checkCollision = (x, y) => {
         const charWidth = 2;
         const charHeight = 2;
@@ -45,39 +44,19 @@ export const GameScene = ({
         return false;
     };
 
-    // Новая система движения с учетом коллизий
     const getSafePosition = (newX, newY) => {
         const prevPos = prevPositionRef.current;
         let safeX = newX;
         let safeY = newY;
 
-        // Проверяем движение по X
-        if (newX !== prevPos.x) {
-            if (checkCollision(newX, prevPos.y)) {
-                safeX = prevPos.x;
-            } else {
-                // Пробуем небольшое смещение для "скольжения"
-                const tryY = prevPos.y + (newY - prevPos.y) * 0.5;
-                if (!checkCollision(newX, tryY)) {
-                    safeY = tryY;
-                }
-            }
+        if (newX !== prevPos.x && checkCollision(newX, prevPos.y)) {
+            safeX = prevPos.x;
         }
 
-        // Проверяем движение по Y
-        if (newY !== prevPos.y) {
-            if (checkCollision(safeX, newY)) {
-                safeY = prevPos.y;
-            } else {
-                // Пробуем небольшое смещение для "скольжения"
-                const tryX = prevPos.x + (newX - prevPos.x) * 0.5;
-                if (!checkCollision(tryX, newY)) {
-                    safeX = tryX;
-                }
-            }
+        if (newY !== prevPos.y && checkCollision(safeX, newY)) {
+            safeY = prevPos.y;
         }
 
-        // Проверяем угловое движение
         if (newX !== prevPos.x && newY !== prevPos.y && checkCollision(safeX, safeY)) {
             if (!checkCollision(newX, prevPos.y)) {
                 return { x: newX, y: prevPos.y };
@@ -88,7 +67,6 @@ export const GameScene = ({
             return prevPos;
         }
 
-        // Границы карты
         safeX = Math.max(1, Math.min(mapWidth - 1, safeX));
         safeY = Math.max(1, Math.min(mapHeight - 1, safeY));
 
@@ -98,20 +76,27 @@ export const GameScene = ({
     const handleJoystickMove = (direction) => {
         const { x, y } = direction;
         const length = Math.sqrt(x * x + y * y);
-        setMovement({
+
+        // Нормализуем вектор направления
+        movementRef.current = {
             x: length > 0 ? x / length : 0,
             y: length > 0 ? y / length : 0
-        });
+        };
     };
 
     useEffect(() => {
         let animationFrameId;
-        const updatePosition = () => {
+        const updatePosition = (timestamp) => {
+            const deltaTime = timestamp - lastUpdateRef.current;
+            lastUpdateRef.current = timestamp;
+
             const { x, y } = movementRef.current;
             if (x !== 0 || y !== 0) {
                 setCharacterPosition(prev => {
-                    const newX = prev.x + x * characterSpeed;
-                    const newY = prev.y + y * characterSpeed;
+                    // Учитываем время между кадрами для плавного движения
+                    const distance = CHARACTER_SPEED * (deltaTime / 16.67); // Нормализуем к 60 FPS
+                    const newX = prev.x + x * distance;
+                    const newY = prev.y + y * distance;
                     const safePos = getSafePosition(newX, newY);
                     prevPositionRef.current = safePos;
                     return safePos;
@@ -121,11 +106,7 @@ export const GameScene = ({
         };
         animationFrameId = requestAnimationFrame(updatePosition);
         return () => cancelAnimationFrame(animationFrameId);
-    }, [characterSpeed, mapWidth, mapHeight]);
-
-    useEffect(() => {
-        movementRef.current = movement;
-    }, [movement]);
+    }, []);
 
     const scale = Math.min(
         displayWidth / mapWidth,
@@ -175,8 +156,8 @@ export const GameScene = ({
                             height: '2%',
                             transform: `
                                 translate(-50%, -50%)
-                                rotate(${movement.x !== 0 || movement.y !== 0
-                                    ? Math.atan2(movement.y, movement.x) * (180 / Math.PI) + 90
+                                rotate(${movementRef.current.x !== 0 || movementRef.current.y !== 0
+                                    ? Math.atan2(movementRef.current.y, movementRef.current.x) * (180 / Math.PI) + 90
                                     : 0}deg)
                             `
                         }}
@@ -188,7 +169,7 @@ export const GameScene = ({
 
             <VirtualJoystick
                 onMove={handleJoystickMove}
-                onStop={() => setMovement({ x: 0, y: 0 })}
+                onStop={() => movementRef.current = { x: 0, y: 0 }}
             />
         </div>
     );
