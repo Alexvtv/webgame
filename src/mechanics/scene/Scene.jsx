@@ -175,7 +175,7 @@ export const GameScene = ({
                     transform: `scale(${scale})`,
                     transformOrigin: 'top left'
                 }}>
-                    {objects.map(obj => (
+                    {processedObjects.map(obj => (
                         <div
                             key={obj.id}
                             className={styles[`map-object-${obj.type}`]}
@@ -185,7 +185,8 @@ export const GameScene = ({
                                 top: `${obj.y}%`,
                                 width: `${obj.width || 5}%`,
                                 height: `${obj.height || 5}%`,
-                                transform: 'translate(-50%, -50%)'
+                                transform: 'translate(-50%, -50%)',
+                                border: obj.type === 'dungeon' ? `${obj.border || 3}% solid #333` : 'none'
                             }}
                         />
                     ))}
