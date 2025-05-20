@@ -60,6 +60,9 @@ export const GameScene = ({
     const lastUpdateRef = useRef(performance.now());
     const prevPositionRef = useRef({ x: mapWidth / 2, y: mapHeight / 2 });
 
+    const processedObjects = generateCompositeObjects(objects)
+        .sort((a, b) => (b.priority || 0) - (a.priority || 0));
+
     const checkCollision = (x, y) => {
         const charWidth = 2;
         const charHeight = 2;
@@ -69,7 +72,7 @@ export const GameScene = ({
         const charTop = y - charHeight / 2;
         const charBottom = y + charHeight / 2;
 
-        for (const obj of objects) {
+        for (const obj of processedObjects) {
             const objLeft = obj.x - (obj.width || 5) / 2;
             const objRight = obj.x + (obj.width || 5) / 2;
             const objTop = obj.y - (obj.height || 5) / 2;
@@ -148,9 +151,6 @@ export const GameScene = ({
         animationFrameId = requestAnimationFrame(updatePosition);
         return () => cancelAnimationFrame(animationFrameId);
     }, []);
-
-    const processedObjects = generateCompositeObjects(objects)
-        .sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
     const scale = Math.min(
         displayWidth / mapWidth,
