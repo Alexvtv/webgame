@@ -2,6 +2,47 @@ import React, { useState, useEffect, useRef } from 'react';
 import { VirtualJoystick } from '../joystick/Joystick';
 import styles from './Scene.module.scss';
 
+const generateCompositeObjects = (objects) => {
+    return objects.flatMap(obj => {
+        if (obj.type === 'dungeon') {
+            const border = obj.border || 3;
+            return [
+                // Основная стена (верхняя)
+                {
+                    id: `${obj.id}_top`,
+                    x: obj.x,
+                    y: obj.y - (obj.height / 2) + border / 2,
+                    type: 'wall',
+                    height: border,
+                    width: obj.width,
+                    priority: obj.priority
+                },
+                // Левая стена
+                {
+                    id: `${obj.id}_left`,
+                    y: obj.y,
+                    type: 'wall',
+                    x: obj.x - obj.width / 2 + border / 2,
+                    width: border,
+                    height: obj.height,
+                    priority: obj.priority
+                },
+                // Правая стена
+                {
+                    id: `${obj.id}_right`,
+                    y: obj.y,
+                    type: 'wall',
+                    x: obj.x + obj.width / 2 - border / 2,
+                    width: border,
+                    height: obj.height,
+                    priority: obj.priority
+                }
+            ];
+        }
+        return obj;
+    });
+};
+
 export const GameScene = ({
     displayWidth = 100,
     displayHeight = 100,
@@ -107,6 +148,9 @@ export const GameScene = ({
         animationFrameId = requestAnimationFrame(updatePosition);
         return () => cancelAnimationFrame(animationFrameId);
     }, []);
+
+    const processedObjects = generateCompositeObjects(objects)
+        .sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
     const scale = Math.min(
         displayWidth / mapWidth,
