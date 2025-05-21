@@ -3,11 +3,11 @@ import { VirtualJoystick } from '../joystick/Joystick';
 import styles from './Scene.module.scss';
 
 const generateCompositeObjects = (objects) => {
+    // Оставим без изменений, так как работает с абсолютными координатами
     return objects.flatMap(obj => {
         if (obj.type === 'dungeon') {
             const border = obj.border || 3;
             return [
-                // Основная стена (верхняя)
                 {
                     id: `${obj.id}_top`,
                     x: obj.x,
@@ -17,7 +17,6 @@ const generateCompositeObjects = (objects) => {
                     width: obj.width,
                     priority: obj.priority
                 },
-                // Левая стена
                 {
                     id: `${obj.id}_left`,
                     y: obj.y,
@@ -27,7 +26,6 @@ const generateCompositeObjects = (objects) => {
                     height: obj.height,
                     priority: obj.priority
                 },
-                // Правая стена
                 {
                     id: `${obj.id}_right`,
                     y: obj.y,
@@ -44,167 +42,173 @@ const generateCompositeObjects = (objects) => {
 };
 
 export const GameScene = ({
-    displayWidth = 100,
-    displayHeight = 100,
-    mapWidth = 100,
-    mapHeight = 100,
+    mapWidth = 1000,
+    mapHeight = 1000,
     objects = []
 }) => {
+    const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+    const [scrollOffset, setScrollOffset] = useState({ x: 0, y: 0 });
+    const containerRef = useRef(null);
+    const characterRef = useRef(null);
+
     const [characterPosition, setCharacterPosition] = useState({
         x: mapWidth / 2,
         y: mapHeight / 2
     });
 
-    const CHARACTER_SPEED = 0.2; // Фиксированная скорость
+    const CHARACTER_SPEED = 2; // Пикселей за кадр
     const movementRef = useRef({ x: 0, y: 0 });
-    const lastUpdateRef = useRef(performance.now());
-    const prevPositionRef = useRef({ x: mapWidth / 2, y: mapHeight / 2 });
+    const prevPositionRef = useRef({ ...characterPosition });
 
     const processedObjects = generateCompositeObjects(objects)
         .sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
+    // Ресайз наблюдатель для контейнера
+    useEffect(() => {
+        if (!containerRef.current) return;
+
+        const observer = new ResizeObserver(([entry]) => {
+            const newSize = {
+                width: entry.contentRect.width,
+                height: entry.contentRect.height
+            };
+            setContainerSize(newSize);
+            updateScrollPosition(characterPosition, newSize);
+        });
+
+        observer.observe(containerRef.current);
+        return () => observer.disconnect();
+    }, []);
+
+    // Обновление позиции прокрутки при движении персонажа
+    const updateScrollPosition = (pos, containerSize) => {
+        if (!containerRef.current || !characterRef.current) return;
+
+        const characterRect = characterRef.current.getBoundingClientRect();
+        const containerRect = containerRef.current.getBoundingClientRect();
+
+        const targetX = pos.x - containerSize.width / 2;
+        const targetY = pos.y - containerSize.height / 2;
+
+        const maxX = mapWidth - containerSize.width;
+        const maxY = mapHeight - containerSize.height;
+
+        setScrollOffset({
+            x: Math.max(0, Math.min(maxX, targetX)),
+            y: Math.max(0, Math.min(maxY, targetY))
+        });
+    };
+
+    // Проверка коллизий (адаптирована под пиксели)
     const checkCollision = (x, y) => {
-        const charWidth = 2;
-        const charHeight = 2;
+        const charWidth = 20;
+        const charHeight = 20;
 
-        const charLeft = x - charWidth / 2;
-        const charRight = x + charWidth / 2;
-        const charTop = y - charHeight / 2;
-        const charBottom = y + charHeight / 2;
-
-        for (const obj of processedObjects) {
-            const objLeft = obj.x - (obj.width || 5) / 2;
-            const objRight = obj.x + (obj.width || 5) / 2;
-            const objTop = obj.y - (obj.height || 5) / 2;
-            const objBottom = obj.y + (obj.height || 5) / 2;
-
-            if (charRight > objLeft &&
-                charLeft < objRight &&
-                charBottom > objTop &&
-                charTop < objBottom) {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    const getSafePosition = (newX, newY) => {
-        const prevPos = prevPositionRef.current;
-        let safeX = newX;
-        let safeY = newY;
-
-        if (newX !== prevPos.x && checkCollision(newX, prevPos.y)) {
-            safeX = prevPos.x;
-        }
-
-        if (newY !== prevPos.y && checkCollision(safeX, newY)) {
-            safeY = prevPos.y;
-        }
-
-        if (newX !== prevPos.x && newY !== prevPos.y && checkCollision(safeX, safeY)) {
-            if (!checkCollision(newX, prevPos.y)) {
-                return { x: newX, y: prevPos.y };
-            }
-            if (!checkCollision(prevPos.x, newY)) {
-                return { x: prevPos.x, y: newY };
-            }
-            return prevPos;
-        }
-
-        safeX = Math.max(1, Math.min(mapWidth - 1, safeX));
-        safeY = Math.max(1, Math.min(mapHeight - 1, safeY));
-
-        return { x: safeX, y: safeY };
-    };
-
-    const handleJoystickMove = (direction) => {
-        const { x, y } = direction;
-        const length = Math.sqrt(x * x + y * y);
-
-        // Нормализуем вектор направления
-        movementRef.current = {
-            x: length > 0 ? x / length : 0,
-            y: length > 0 ? y / length : 0
+        const charRect = {
+            left: x - charWidth / 2,
+            right: x + charWidth / 2,
+            top: y - charHeight / 2,
+            bottom: y + charHeight / 2
         };
+
+        return processedObjects.some(obj => {
+            const objRect = {
+                left: obj.x - (obj.width || 0) / 2,
+                right: obj.x + (obj.width || 0) / 2,
+                top: obj.y - (obj.height || 0) / 2,
+                bottom: obj.y + (obj.height || 0) / 2
+            };
+
+            return (
+                charRect.right > objRect.left &&
+                charRect.left < objRect.right &&
+                charRect.bottom > objRect.top &&
+                charRect.top < objRect.bottom
+            );
+        });
     };
 
+    // Логика движения
     useEffect(() => {
         let animationFrameId;
-        const updatePosition = (timestamp) => {
-            const deltaTime = timestamp - lastUpdateRef.current;
-            lastUpdateRef.current = timestamp;
 
-            const { x, y } = movementRef.current;
-            if (x !== 0 || y !== 0) {
-                setCharacterPosition(prev => {
-                    // Учитываем время между кадрами для плавного движения
-                    const distance = CHARACTER_SPEED * (deltaTime / 16.67); // Нормализуем к 60 FPS
-                    const newX = prev.x + x * distance;
-                    const newY = prev.y + y * distance;
-                    const safePos = getSafePosition(newX, newY);
-                    prevPositionRef.current = safePos;
-                    return safePos;
-                });
-            }
+        const updatePosition = () => {
+            setCharacterPosition(prev => {
+                const newX = prev.x + movementRef.current.x * CHARACTER_SPEED;
+                const newY = prev.y + movementRef.current.y * CHARACTER_SPEED;
+
+                // Проверка границ карты
+                const boundedX = Math.max(10, Math.min(mapWidth - 10, newX));
+                const boundedY = Math.max(10, Math.min(mapHeight - 10, newY));
+
+                // Проверка коллизий
+                if (!checkCollision(boundedX, boundedY)) {
+                    prevPositionRef.current = { x: boundedX, y: boundedY };
+                    updateScrollPosition({ x: boundedX, y: boundedY }, containerSize);
+                    return { x: boundedX, y: boundedY };
+                }
+                return prev;
+            });
+
             animationFrameId = requestAnimationFrame(updatePosition);
         };
+
         animationFrameId = requestAnimationFrame(updatePosition);
         return () => cancelAnimationFrame(animationFrameId);
     }, []);
 
-    const scale = Math.min(
-        displayWidth / mapWidth,
-        displayHeight / mapHeight
-    );
-
     return (
         <div className={styles["game-container"]}>
             <div
+                ref={containerRef}
                 className={styles["game-field"]}
                 style={{
-                    width: `${displayWidth}%`,
-                    height: `${displayHeight}%`,
-                    position: 'relative',
-                    overflow: 'hidden'
+                    width: '100%',
+                    height: '100%',
+                    overflow: 'auto',
+                    position: 'relative'
                 }}
             >
-                <div style={{
-                    position: 'absolute',
-                    width: `${mapWidth}%`,
-                    height: `${mapHeight}%`,
-                    transform: `scale(${scale})`,
-                    transformOrigin: 'top left'
-                }}>
+                <div
+                    style={{
+                        width: `${mapWidth}px`,
+                        height: `${mapHeight}px`,
+                        position: 'relative',
+                        // transform: `translate(-${scrollOffset.x}px, -${scrollOffset.y}px)`,
+                        // transition: 'transform 0.1s linear'
+                    }}
+                >
                     {processedObjects.map(obj => (
                         <div
                             key={obj.id}
                             className={styles[`map-object-${obj.type}`]}
                             style={{
                                 position: 'absolute',
-                                left: `${obj.x}%`,
-                                top: `${obj.y}%`,
-                                width: `${obj.width || 5}%`,
-                                height: `${obj.height || 5}%`,
-                                transform: 'translate(-50%, -50%)',
-                                border: obj.type === 'dungeon' ? `${obj.border || 3}% solid #333` : 'none'
+                                left: `${obj.x - (obj.width || 0) / 2}px`,
+                                top: `${obj.y - (obj.height || 0) / 2}px`,
+                                width: `${obj.width || 5}px`,
+                                height: `${obj.height || 5}px`,
+                                border: obj.type === 'dungeon' ? `${obj.border || 3}px solid #333` : 'none'
                             }}
                         />
                     ))}
 
                     <div
+                        ref={characterRef}
                         className={styles["character"]}
                         style={{
                             position: 'absolute',
-                            left: `${characterPosition.x}%`,
-                            top: `${characterPosition.y}%`,
-                            width: '2%',
-                            height: '2%',
+                            left: `${characterPosition.x}px`,
+                            top: `${characterPosition.y}px`,
+                            width: '20px',
+                            height: '20px',
                             transform: `
                                 translate(-50%, -50%)
                                 rotate(${movementRef.current.x !== 0 || movementRef.current.y !== 0
                                     ? Math.atan2(movementRef.current.y, movementRef.current.x) * (180 / Math.PI) + 90
                                     : 0}deg)
-                            `
+                            `,
+                            transition: 'transform 0.1s linear'
                         }}
                     >
                         <div className={styles["character-inner"]}></div>
@@ -213,7 +217,7 @@ export const GameScene = ({
             </div>
 
             <VirtualJoystick
-                onMove={handleJoystickMove}
+                onMove={(dir) => movementRef.current = dir}
                 onStop={() => movementRef.current = { x: 0, y: 0 }}
             />
         </div>

@@ -2,18 +2,16 @@ import { GameScene } from "../../mechanics/scene/Scene"
 
 export const GamePage = () => {
     const demoMap = {
-        mapWidth: 100,
-        mapHeight: 100,
-        displayWidth: 50,
-        displayHeight: 50,
+        mapWidth: 1000,
+        mapHeight: 1000,
         objects: [
             {
                 id: 'forest1',
                 type: 'forest',
-                x: 50,
-                y: 100,
-                width: 60,
-                height: 30,
+                x: 150,
+                y: 300,
+                width: 300,
+                height: 130,
                 priority: 10
             },
             {
@@ -21,27 +19,27 @@ export const GamePage = () => {
                 type: 'plant',
                 x: 30,
                 y: 40,
-                width: 8,
-                height: 8,
+                width: 40,
+                height: 40,
                 priority: 20
             },
             {
                 id: 'wall1',
                 type: 'wall',
-                x: 20,
-                y: 30,
-                width: 40,
-                height: 2,
+                x: 160,
+                y: 130,
+                width: 180,
+                height: 10,
                 priority: 40
             },
             {
                 id: 'dungeon1',
                 type: 'dungeon',
-                x: 100,
-                y: 60,
-                width: 30, //100
-                height: 36, //160
-                border: 3,
+                x: 500,
+                y: 100,
+                width: 150, //100
+                height: 160, //160
+                border: 10,
                 priority: 70
             },
         ],
